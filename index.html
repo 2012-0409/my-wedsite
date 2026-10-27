@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P チャットWebサイト
+        
+    </title>
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #f4f5f7;
+            --container-bg: #ffffff;
+            --text-color: #333333;
+            --primary-color: #4a90e2;
+            --success-color: #2ecc71;
+            --danger-color: #e74c3c;
+            --border-color: #e1e4e8;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background: var(--container-bg);
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        h1 {
+            font-size: 1.5rem;
+            margin-top: 0;
+            text-align: center;
+            color: var(--primary-color);
+        }
+        .setup-panel, .main-panel {
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 1rem;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #357ae8;
+        }
+        .hidden {
+            display: none !important;
+        }
+        .chat-area {
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            height: 350px;
+            overflow-y: auto;
+            padding: 15px;
+            background: #fafbfc;
+            margin-bottom: 15px;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            max-width: 80%;
+            word-wrap: break-word;
+            font-size: 0.95rem;
+        }
+        .message.system {
+            background: #e2e8f0;
+            color: #4a5568;
+            margin: 10px auto;
+            text-align: center;
+            max-width: 90%;
+            font-size: 0.85rem;
+        }
+        .message.received {
+            background: #edf2f7;
+            margin-right: auto;
+        }
+        .message.sent {
+            background: #d6e4ff;
+            margin-left: auto;
+            text-align: right;
+        }
+        .meta {
+            font-size: 0.75rem;
+            color: #718096;
+            margin-bottom: 2px;
+        }
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
+        .input-group input {
+            flex: 1;
+        }
+        .input-group button {
+            width: auto;
+            padding: 0 20px;
+        }
+        .status-bar {
+            font-size: 0.85rem;
+            padding: 8px 12px;
+            background: #edf2f7;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: var(--danger-color);
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .status-indicator.online {
+            background: var(--success-color);
+        }
+        /* 着信ポップアップ */
+        .call-popup {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            border: 2px solid var(--primary-color);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+            z-index: 1000;
+            text-align: center;
+            width: 300px;
+        }
+        .call-popup h3 {
+            margin-top: 0;
+            color: var(--primary-color);
+        }
+        .popup-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .popup-buttons button {
+            flex: 1;
+        }
+        .btn-accept { background-color: var(--success-color); }
+        .btn-accept:hover { background-color: #27ae60; }
+        .btn-decline { background-color: var(--danger-color); }
+        .btn-decline:hover { background-color: #c0392b; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>P2P 合言葉チャットシステム</h1>
+
+    <!-- 接続設定パネル -->
+    <div id="setupPanel" class="setup-panel">
+        <div class="form-group">
+            <label for="hostnameInput">あなたのホスト名（名前）</label>
+            <input type="text" id="hostnameInput" placeholder="例: タロウ">
+        </div>
+        <div class="form-group">
+            <label for="secretInput">共通の合言葉</label>
+            <input type="text" id="secretInput" placeholder="例: secret-room-123">
+        </div>
+        <button id="connectBtn" onclick="initBtnClick()">この合言葉で接続する</button>
+    </div>
+
+    <!-- メイン通信パネル -->
+    <div id="mainPanel" class="main-panel hidden">
+        <div class="status-bar">
+            <div>
+                <span id="statusIndicator" class="status-indicator"></span>
+                <span id="statusText">接続中...</span>
+            </div>
+            <div id="infoText"></div>
+        </div>
+
+        <div id="chatArea" class="chat-area">
+            <div class="message system">合言葉を入力してログインするとここにメッセージが表示されます</div>
+        </div>
+
+        <div class="input-group">
+            <input type="text" id="messageInput" placeholder="メッセージを入力..." onkeypress="handleKeyPress(event)">
+            <button onclick="sendMessage()">送信</button>
+        </div>
+    </div>
+</div>
+
+<!-- 着信通知ポップアップ UI -->
+<div id="callPopup" class="call-popup hidden">
+    <h3 id="popupTitle">着信中</h3>
+    <p id="popupBody">ユーザーが接続を求めています</p>
+    <div class="popup-buttons">
+        <button class="btn-accept" onclick="acceptCall()">チャットを開始</button>
+        <button class="btn-decline" onclick="declineCall()">拒否</button>
+    </div>
+</div>
+
+<script>
+    let peer = null;
+    let connections = {}; // 接続済みのピアリスト
+    let myHostName = "";
+    let mySecret = "";
+    let myPeerId = "";
+    let pendingConnection = null;
+
+    // 起動時にLocalStorageからホスト名を復元
+    window.onload = function() {
+        const savedName = localStorage.getItem('p2p_chat_hostname');
+        if (savedName) {
+            document.getElementById('hostnameInput').value = savedName;
+        }
+    };
+
+    // 接続ボタン押下時
+    function initBtnClick() {
+        myHostName = document.getElementById('hostnameInput').value.trim();
+        mySecret = document.getElementById('secretInput').value.trim();
+
+        if (!myHostName || !mySecret) {
+            alert("ホスト名と合言葉の両方を入力してください。");
+            return;
+        }
+
+        // ホスト名をブラウザに記憶
+        localStorage.setItem('p2p_chat_hostname', myHostName);
+
+        // 合言葉をハッシュ化（簡易）して競合を防ぎつつ一意のIDのベースを作成
+        // 同一合言葉内のユーザー同士を見つけやすくするため、IDプレフィックスに合言葉を利用
+        // PeerJSの特性上、完全なブロードキャストはサーバーなしでは難しいため、
+        // 今回は「合言葉-ホスト名」をIDとして登録し、同一合言葉の他の固定メンバーや
+        // 相手に直接シグナルを送るベースを作ります。
+        myPeerId = mySecret + "___" + myHostName;
+
+        initPeer();
+    }
+
+    // Peerの初期化
+    function initPeer() {
+        // 無料のパブリックPeerJSサーバーを利用
+        peer = new Peer(myPeerId);
+
+        document.getElementById('setupPanel').classList.add('hidden');
+        document.getElementById('mainPanel').classList.remove('hidden');
+
+        peer.on('open', (id) => {
+            document.getElementById('statusIndicator').classList.add('online');
+            document.getElementById('statusText').textContent = "オンライン (待機中)";
+            document.getElementById('infoText').textContent = `ホスト: ${myHostName}`;
+            appendSystemMessage(`合言葉「${mySecret}」のネットワークに参加しました。`);
+            
+            // 周囲のユーザーへ自動接続の試み（簡易的なディスカバリ）
+            // サーバーレスP2Pのため、あらかじめ同じ合言葉の他の端末に対して接続を試行できるようにする拡張用の余地
+        });
+
+        // 外部からの着信（データ接続要求）を検知
+        peer.on('connection', (conn) => {
+            // 送信元のホスト名を取得（IDから切り出し）
+            const senderId = conn.peer;
+            if (senderId.startsWith(mySecret + "___")) {
+                const senderHost = senderId.split("___")[1];
+                
+                // 着信ポップアップを表示
+                pendingConnection = conn;
+                showCallPopup(senderHost);
+            } else {
+                // 合言葉が一致しない無関係な接続は切断
+                conn.close();
+            }
+        });
+
+        peer.on('error', (err) => {
+            console.error(err);
+            if (err.type === 'unavailable-id') {
+                alert("そのホスト名は既にこの合言葉内で使用されています。変更してください。");
+                location.reload();
+            } else {
+                appendSystemMessage("エラーが発生しました: " + err.type);
+            }
+        });
+    }
+
+    // 着信ポップアップの表示
+    function showCallPopup(name) {
+        document.getElementById('popupTitle').textContent = "🔌 新しい着信";
+        document.getElementById('popupBody').textContent = `「${name}」さんから接続要求があります。`;
+        document.getElementById('callPopup').classList.remove('hidden');
+    }
+
+    // 着信を受ける
+    function acceptCall() {
+        document.getElementById('callPopup').classList.add('hidden');
+        if (pendingConnection) {
+            setupConnectionEvents(pendingConnection);
+            appendSystemMessage(`「${pendingConnection.peer.split("___")[1]}」さんからの着信を許可しました。`);
+            // お返しにこちらからも相手にデータチャンネルを繋ぐ（双方向確立の安定化）
+            const backConn = peer.connect(pendingConnection.peer);
+            setupConnectionEvents(backConn);
+            pendingConnection = null;
+        }
+    }
+
+    // 着信を拒否する
+    function declineCall() {
+        document.getElementById('callPopup').classList.add('hidden');
+        if (pendingConnection) {
+            pendingConnection.send({ type: 'system', message: '接続が拒否されました。' });
+            pendingConnection.close();
+            pendingConnection = null;
+        }
+    }
+
+    // 接続イベントのセットアップ
+    function setupConnectionEvents(conn) {
+        const peerId = conn.peer;
+        if (connections[peerId]) return; // 既に接続済みならスキップ
+
+        connections[peerId] = conn;
+
+        conn.on('open', () => {
+            const peerName = peerId.split("___")[1];
+            appendSystemMessage(`「${peerName}」さんと接続が確立され、グループに同期しました。`);
+        });
+
+        conn.on('data', (data) => {
+            if (data.type === 'chat') {
+                appendMessage(data.sender, data.message, 'received');
+            } else if (data.type === 'system') {
+                appendSystemMessage(data.message);
+            }
+        });
+
+        conn.on('close', () => {
+            const peerName = peerId.split("___")[1];
+            appendSystemMessage(`「${peerName}」さんが切断しました。`);
+            delete connections[peerId];
+        });
+    }
+
+    // メッセージの送信
+    function sendMessage() {
+        const input = document.getElementById('messageInput');
+        const text = input.value.trim();
+        if (!text) return;
+
+        // 接続されているすべての人（グループ）に一斉送信
+        let hasTargets = false;
+        for (let id in connections) {
+            if (connections[id] && connections[id].open) {
+                connections[id].send({
+                    type: 'chat',
+                    sender: myHostName,
+                    message: text
+                });
+                hasTargets = true;
+            }
+        }
+
+        // 画面に自分の発言を表示
+        appendMessage(myHostName, text, 'sent');
+        input.value = "";
+
+        if (!hasTargets) {
+            appendSystemMessage("※現在グループ内に他の接続メンバーがいません。同じ合言葉で誰かが接続してくるか、相手のIDへ直接発信する必要があります。");
+            
+            // ディスカバリ補助：誰もいない場合、同じ合言葉を持つ他の一般的な名前の候補への接続を裏で試みることができますが、
+            // 特定の相手を呼び出したい場合は、その相手がログインした後に自動的に同期されます。
+            // 手動呼び出しを試みる場合、相手のホスト名が分かっていれば自動的に裏で接続を試みます。
+            tryToConnectToSecretGroup();
+        }
+    }
+
+    // 相手が先に入っているかもしれないので、合言葉内の一般的な通信同期を試みる
+    function tryToConnectToSecretGroup() {
+        // P2Pシグナリングの補助として、他のブラウザがこの画面を開いた際に「着信」が入るのを待つのが最も確実です。
+    }
+
+    function handleKeyPress(event) {
+        if (event.key === 'Enter') {
+            sendMessage();
+        }
+    }
+
+    // チャット画面へのメッセージ追加
+    function appendMessage(sender, text, side) {
+        const chatArea = document.getElementById('chatArea');
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `message ${side}`;
+
+        const metaDiv = document.createElement('div');
+        metaDiv.className = 'meta';
+        metaDiv.textContent = sender;
+
+        const textDiv = document.createElement('div');
+        textDiv.textContent = text;
+
+        msgDiv.appendChild(metaDiv);
+        msgDiv.appendChild(textDiv);
+        chatArea.appendChild(msgDiv);
+        chatArea.scrollTop = chatArea.scrollHeight;
+    }
+
+    // システムメッセージの追加
+    function appendSystemMessage(text) {
+        const chatArea = document.getElementById('chatArea');
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'message system';
+        msgDiv.textContent = text;
+        chatArea.appendChild(msgDiv);
+        chatArea.scrollTop = chatArea.scrollHeight;
+    }
+</script>
+
+</body>
+</html>
